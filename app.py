@@ -59,3 +59,6 @@ def handle_mapping():
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
+
+# curl http://localhost:5001/api/all
+# curl "http://localhost:5001/api/mapping?url=https://careers-navitus.icims.com/jobs/4347/data-scientist-business-insights-intern/candidate?from=login&csrf=7EA16D5EE265DD87&hashed=-625888660"
