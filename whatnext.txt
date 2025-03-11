@@ -1,0 +1,4 @@
+1) Mapping inversion
+2) Autofill using existing xpaths 
+3) Autofill using xpath and corresponding mapping of user details
+4) Better UI to store User details and store the user details to mongodb
