@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AutoFormFiller",
-  "version": "2.2.1",
+  "version": "3.2.5",
   "description": "Efficient Job Application Bot new",
   "permissions": [
     "storage",
@@ -9,6 +9,7 @@
     "scripting"
   ],
   "host_permissions": [
+    "http://localhost:5001/*",
     "http://*/*",
     "https://*/*"
   ],

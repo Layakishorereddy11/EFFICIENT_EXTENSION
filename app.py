@@ -45,15 +45,26 @@ def handle_mapping():
                 return jsonify({'error': 'Invalid data'}), 400
             
             url = data['url']
-            mapping = data['mapping']
+            new_mapping = data['mapping']
+            
+            # Get existing mapping
+            existing_doc = mappings_collection.find_one({'url': url}, {'_id': 0})
+            
+            if existing_doc:
+                # Merge existing and new mappings
+                merged_mapping = {**existing_doc['mapping'], **new_mapping}
+            else:
+                merged_mapping = new_mapping
             
             # Add metadata
             document = {
                 'url': url,
-                'mapping': mapping,
-                'created_at': datetime.utcnow(),
+                'mapping': merged_mapping,
                 'updated_at': datetime.utcnow()
             }
+            
+            if not existing_doc:
+                document['created_at'] = datetime.utcnow()
             
             # Upsert the document
             result = mappings_collection.update_one(
@@ -64,9 +75,9 @@ def handle_mapping():
             
             return jsonify({
                 'status': 'success',
-                'message': 'Mapping saved',
+                'message': 'Mapping updated',
                 'url': url,
-                'mapping': mapping
+                'mapping': merged_mapping
             })
             
         except Exception as e:
@@ -146,3 +157,5 @@ if __name__ == '__main__':
 
 # # Get stats
 # curl http://localhost:5001/api/stats
+# Alternative one-liner to kill process on port 5001
+# sudo lsof -t -i:5001 | xargs kill -9

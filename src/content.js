@@ -21,6 +21,12 @@ function getXPath(element) {
 
 let formMapping = {};
 
+// Add tracking variables
+let hasAutoFilled = false;
+let isAutoFilling = false;
+let lastUrl = window.location.href;
+let isUserInteracting = false;
+
 // Add MutationObserver to handle dynamic content
 const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
@@ -64,13 +70,54 @@ function handleIframes() {
     });
 }
 
+// Retry helper function with exponential backoff
+async function fetchWithRetry(url, options = {}, maxRetries = 3) {
+    let retries = 0;
+    while (retries < maxRetries) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+            
+            const response = await fetch(url, {
+                ...options,
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            return response;
+        } catch (error) {
+            retries++;
+            if (retries === maxRetries) throw error;
+            await new Promise(resolve => 
+                setTimeout(resolve, Math.pow(2, retries) * 1000)
+            );
+        }
+    }
+}
+
+// Initialize with progressive delay
+let attempts = 0;
+const maxAttempts = 5;
+
+function initializeWithRetry() {
+    if (attempts >= maxAttempts) return;
+    
+    setTimeout(async () => {
+        try {
+            await autoFillForm();
+        } catch (error) {
+            attempts++;
+            initializeWithRetry();
+        }
+    }, Math.pow(2, attempts) * 1000);
+}
+
 // Initialize
-document.addEventListener('DOMContentLoaded', () => {
-    attachEventListeners(document);
-    handleIframes();
-});
+document.addEventListener('DOMContentLoaded', initializeWithRetry);
 
 function captureValue(element) {
+    if (!isUserInteracting || isAutoFilling) return;
+    
     const xpath = getXPath(element);
     let value;
 
@@ -100,6 +147,7 @@ document.addEventListener('input', handleFormEvent);
 document.addEventListener('change', handleFormEvent);
 
 function handleFormEvent(event) {
+    isUserInteracting = true;
     const target = event.target;
     if (!['input', 'textarea', 'select'].includes(target.tagName.toLowerCase())) {
         return;
@@ -137,52 +185,99 @@ function sendMappingToBackend() {
         console.error('Error saving mapping:', error);
     });
 }
-//   // On page load, retrieve the mapping for this page and autofill fields.
-//   window.addEventListener('load', () => {
-//     const pageUrl = encodeURIComponent(window.location.href);
-//     fetch('http://localhost:5001/api/mapping?url=' + pageUrl)
-//       .then(response => response.json())
-//       .then(data => {
-//         console.log('Mapping retrieved:', data);
-//         if (data && data.mapping) {
-//           // Get the user’s profile from chrome.storage.
-//           chrome.storage.sync.get(['userProfile'], function(result) {
-//             const profile = result.userProfile;
-//             if (!profile) {
-//               console.log('No user profile found. Set up your profile in the options page.');
-//               return;
-//             }
-//             // For each captured XPath, attempt to determine which profile field to use.
-//             for (const xpath in data.mapping) {
-//               let valueToFill = '';
-//               // Use simple heuristics based on the XPath string.
-//               if (xpath.toLowerCase().includes('name') && profile.name) {
-//                 valueToFill = profile.name;
-//               } else if (xpath.toLowerCase().includes('email') && profile.email) {
-//                 valueToFill = profile.email;
-//               } else if (xpath.toLowerCase().includes('phone') && profile.phone) {
-//                 valueToFill = profile.phone;
-//               } else if (xpath.toLowerCase().includes('address') && profile.address) {
-//                 valueToFill = profile.address;
-//               }
-//               if (valueToFill) {
-//                 const element = document.evaluate(
-//                   xpath,
-//                   document,
-//                   null,
-//                   XPathResult.FIRST_ORDERED_NODE_TYPE,
-//                   null
-//                 ).singleNodeValue;
-//                 if (element) {
-//                   element.value = valueToFill;
-//                   console.log('Autofilled', xpath, valueToFill);
-//                 }
-//               }
-//             }
-//           });
-//         }
-//       })
-//       .catch(error => {
-//         console.error('Error retrieving mapping:', error);
-//       });
-//   });
+
+// Updated autoFillForm function
+async function autoFillForm() {
+    if (hasAutoFilled || isAutoFilling) return;
+    
+    try {
+        isAutoFilling = true;
+        const url = `http://localhost:5001/api/mapping?url=${encodeURIComponent(window.location.href)}`;
+        const response = await fetchWithRetry(url);
+        const data = await response.json();
+        
+        if (data && data.mapping) {
+            const entries = Object.entries(data.mapping);
+            for (const [xpath, value] of entries) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                fillElement(xpath, value);
+            }
+            hasAutoFilled = true;
+        }
+    } catch (error) {
+        console.error('Error fetching mapping:', error);
+    } finally {
+        isAutoFilling = false;
+    }
+}
+
+// Fill element by XPath
+function fillElement(xpath, value) {
+    const element = document.evaluate(
+        xpath,
+        document,
+        null,
+        XPathResult.FIRST_ORDERED_NODE_TYPE,
+        null
+    ).singleNodeValue;
+
+    if (!element) {
+        console.log('Element not found:', xpath);
+        return;
+    }
+
+    try {
+        switch(element.tagName.toLowerCase()) {
+            case 'input':
+                switch(element.type) {
+                    case 'checkbox':
+                    case 'radio':
+                        element.checked = value;
+                        break;
+                    default:
+                        element.value = value;
+                }
+                break;
+            case 'select':
+                element.value = value;
+                break;
+            default:
+                element.value = value;
+        }
+
+        // Trigger events
+        element.dispatchEvent(new Event('input', { bubbles: true }));
+        element.dispatchEvent(new Event('change', { bubbles: true }));
+        element.dispatchEvent(new Event('blur', { bubbles: true }));
+        
+    } catch (error) {
+        console.error('Error filling element:', xpath, error);
+    }
+}
+
+// Add mutation observer for dynamic form fields
+const formObserver = new MutationObserver((mutations) => {
+    if (!hasAutoFilled) {
+        setTimeout(autoFillForm, 1000);
+    }
+});
+
+formObserver.observe(document.body, {
+    childList: true,
+    subtree: true
+});
+
+// Add URL change detection
+function checkUrlChange() {
+    if (lastUrl !== window.location.href) {
+        hasAutoFilled = false;
+        isAutoFilling = false;
+        lastUrl = window.location.href;
+        formMapping = {};
+        initializeWithRetry();
+    }
+}
+
+// Add URL change detection interval
+setInterval(checkUrlChange, 1000);
+
