@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AutoFormFiller",
-  "version": "4.3.0",
+  "version": "4.3.5",
   "description": "Efficient Job Application Bot new",
   "permissions": [
     "storage",
@@ -13,6 +13,9 @@
     "http://*/*",
     "https://*/*"
   ],
+  "action": {
+    "default_popup": "popup.html"
+  },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],

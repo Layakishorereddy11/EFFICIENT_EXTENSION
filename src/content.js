@@ -163,26 +163,35 @@ function debounceSendMapping() {
 
 // Update sendMappingToBackend function
 function sendMappingToBackend() {
-    const payload = {
-        url: window.location.href,
-        mapping: formMapping
-    };
-    fetch('http://localhost:5001/api/mapping', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        },
-        mode: 'cors',
-        credentials: 'include',
-        body: JSON.stringify(payload)
-    })
-    .then(response => response.json())
-    .then(data => {
-        console.log('Mapping saved:', data);
-    })
-    .catch(error => {
-        console.error('Error saving mapping:', error);
+    chrome.storage.sync.get(['userEmail'], function(result) {
+        if (!result.userEmail) {
+            console.error('User not logged in');
+            return;
+        }
+
+        const payload = {
+            url: window.location.href,
+            mapping: formMapping,
+            user_email: result.userEmail
+        };
+
+        fetch('http://localhost:5001/api/mapping', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            mode: 'cors',
+            credentials: 'include',
+            body: JSON.stringify(payload)
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Mapping saved:', data);
+        })
+        .catch(error => {
+            console.error('Error saving mapping:', error);
+        });
     });
 }
 
@@ -191,8 +200,19 @@ async function autoFillForm() {
     if (hasAutoFilled || isAutoFilling) return;
     
     try {
+        const userEmail = await new Promise(resolve => {
+            chrome.storage.sync.get(['userEmail'], result => {
+                resolve(result.userEmail);
+            });
+        });
+
+        if (!userEmail) {
+            console.error('User not logged in');
+            return;
+        }
+
         isAutoFilling = true;
-        const url = `http://localhost:5001/api/mapping?url=${encodeURIComponent(window.location.href)}`;
+        const url = `http://localhost:5001/api/mapping?url=${encodeURIComponent(window.location.href)}&user_email=${encodeURIComponent(userEmail)}`;
         const response = await fetchWithRetry(url);
         const data = await response.json();
         

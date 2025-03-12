@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body {
+      width: 300px;
+      padding: 20px;
+      font-family: 'Inter', sans-serif;
+    }
+    .login-form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    input {
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    button {
+      background: #4361ee;
+      color: white;
+      border: none;
+      padding: 10px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-form">
+    <h2>Login to AutoFormFiller</h2>
+    <input type="email" id="email" placeholder="Enter your email" required>
+    <button id="loginBtn">Login</button>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -41,24 +41,27 @@ def handle_mapping():
     if request.method == 'POST':
         try:
             data = request.get_json()
-            if not data or 'url' not in data or 'mapping' not in data:
+            if not data or 'url' not in data or 'mapping' not in data or 'user_email' not in data:
                 return jsonify({'error': 'Invalid data'}), 400
             
             url = data['url']
             new_mapping = data['mapping']
+            user_email = data['user_email']
             
             # Get existing mapping
-            existing_doc = mappings_collection.find_one({'url': url}, {'_id': 0})
+            existing_doc = mappings_collection.find_one({
+                'url': url,
+                'user_email': user_email
+            }, {'_id': 0})
             
             if existing_doc:
-                # Merge existing and new mappings
                 merged_mapping = {**existing_doc['mapping'], **new_mapping}
             else:
                 merged_mapping = new_mapping
             
-            # Add metadata
             document = {
                 'url': url,
+                'user_email': user_email,
                 'mapping': merged_mapping,
                 'updated_at': datetime.utcnow()
             }
@@ -68,7 +71,7 @@ def handle_mapping():
             
             # Upsert the document
             result = mappings_collection.update_one(
-                {'url': url},
+                {'url': url, 'user_email': user_email},
                 {'$set': document},
                 upsert=True
             )
@@ -86,11 +89,12 @@ def handle_mapping():
     elif request.method == 'GET':
         try:
             url = request.args.get('url')
-            if not url:
-                return jsonify({'error': 'URL parameter is required'}), 400
+            user_email = request.args.get('user_email')
+            if not url or not user_email:
+                return jsonify({'error': 'URL and user_email parameters are required'}), 400
             
             url_decoded = unquote(url)
-            document = mappings_collection.find_one({'url': url_decoded}, {'_id': 0})
+            document = mappings_collection.find_one({'url': url_decoded, 'user_email': user_email}, {'_id': 0})
             
             if document:
                 return jsonify(document)
@@ -105,11 +109,12 @@ def handle_mapping():
     elif request.method == 'DELETE':
         try:
             url = request.args.get('url')
-            if not url:
-                return jsonify({'error': 'URL parameter is required'}), 400
+            user_email = request.args.get('user_email')
+            if not url or not user_email:
+                return jsonify({'error': 'URL and user_email parameters are required'}), 400
                 
             url_decoded = unquote(url)
-            result = mappings_collection.delete_one({'url': url_decoded})
+            result = mappings_collection.delete_one({'url': url_decoded, 'user_email': user_email})
             
             if result.deleted_count:
                 return jsonify({'status': 'success', 'message': 'Mapping deleted'})
@@ -236,6 +241,35 @@ def get_profile_stats():
             'total_profiles': total_profiles,
             'latest_profiles': latest_profiles
         })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Add user authentication endpoint
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    try:
+        data = request.get_json()
+        if not data or 'email' not in data:
+            return jsonify({'error': 'Email is required'}), 400
+        
+        email = data['email']
+        
+        # Find or create user profile
+        profile = db.profiles.find_one({'email': email}, {'_id': 0})
+        
+        if not profile:
+            profile = {
+                'email': email,
+                'created_at': datetime.utcnow(),
+                'updated_at': datetime.utcnow()
+            }
+            db.profiles.insert_one(profile)
+        
+        return jsonify({
+            'status': 'success',
+            'profile': profile
+        })
+        
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
