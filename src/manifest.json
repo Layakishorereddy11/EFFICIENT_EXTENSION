@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AutoFormFiller",
-  "version": "3.2.5",
+  "version": "4.3.0",
   "description": "Efficient Job Application Bot new",
   "permissions": [
     "storage",

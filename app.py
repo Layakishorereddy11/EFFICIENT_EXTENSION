@@ -135,6 +135,110 @@ def get_stats():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# Add new endpoint for user profiles
+@app.route('/api/profile', methods=['GET', 'POST'])
+def handle_profile():
+    if request.method == 'POST':
+        try:
+            profile = request.get_json()
+            if not profile:
+                return jsonify({'error': 'Invalid profile data'}), 400
+
+            # Add metadata
+            profile['updated_at'] = datetime.utcnow()
+
+            # Upsert profile by email
+            result = db.profiles.update_one(
+                {'email': profile['email']},
+                {'$set': profile},
+                upsert=True
+            )
+
+            return jsonify({
+                'status': 'success',
+                'message': 'Profile saved'
+            })
+
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    elif request.method == 'GET':
+        try:
+            email = request.args.get('email')
+            if not email:
+                return jsonify({'error': 'Email parameter required'}), 400
+
+            profile = db.profiles.find_one({'email': email}, {'_id': 0})
+            if profile:
+                return jsonify(profile)
+            return jsonify({'error': 'Profile not found'}), 404
+
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+@app.route('/api/profiles', methods=['GET'])
+def get_all_profiles():
+    try:
+        profiles = list(db.profiles.find({}, {'_id': 0}))
+        return jsonify({
+            'status': 'success',
+            'data': profiles
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/profile/<email>', methods=['DELETE'])
+def delete_profile(email):
+    try:
+        result = db.profiles.delete_one({'email': email})
+        if result.deleted_count:
+            return jsonify({
+                'status': 'success',
+                'message': 'Profile deleted'
+            })
+        return jsonify({'error': 'Profile not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/profile/search', methods=['GET'])
+def search_profiles():
+    try:
+        query = request.args.get('q', '')
+        if not query:
+            return jsonify({'error': 'Search query required'}), 400
+
+        profiles = list(db.profiles.find({
+            '$or': [
+                {'email': {'$regex': query, '$options': 'i'}},
+                {'firstName': {'$regex': query, '$options': 'i'}},
+                {'lastName': {'$regex': query, '$options': 'i'}}
+            ]
+        }, {'_id': 0}))
+
+        return jsonify({
+            'status': 'success',
+            'data': profiles
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/profiles/stats', methods=['GET'])
+def get_profile_stats():
+    try:
+        total_profiles = db.profiles.count_documents({})
+        latest_profiles = list(db.profiles.find(
+            {}, 
+            {'_id': 0, 'email': 1, 'firstName': 1, 'lastName': 1, 'updated_at': 1}
+        ).sort('updated_at', -1).limit(5))
+
+        return jsonify({
+            'status': 'success',
+            'total_profiles': total_profiles,
+            'latest_profiles': latest_profiles
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
 
@@ -159,3 +263,38 @@ if __name__ == '__main__':
 # curl http://localhost:5001/api/stats
 # Alternative one-liner to kill process on port 5001
 # sudo lsof -t -i:5001 | xargs kill -9
+
+# Get all profiles
+# curl http://localhost:5001/api/profiles
+
+# # Get specific profile by email
+# curl "http://localhost:5001/api/profile?email=layakishorereddy@gmail.com"
+
+# # Create/Update profile
+# curl -X POST http://localhost:5001/api/profile \
+#   -H "Content-Type: application/json" \
+#   -d '{
+#     "firstName": "Layakishore Reddy",
+#     "lastName": "Desireddy",
+#     "email": "layakishorereddy@gmail.com",
+#     "phone": "7325329087",
+#     "address": {
+#       "street": "73 Marvin ave",
+#       "city": "Somerset",
+#       "state": "NJ",
+#       "zipCode": "08873"
+#     },
+#     "professional": {
+#       "title": "Software Engineer",
+#       "summary": "Experienced developer"
+#     }
+#   }'
+
+# # Search profiles
+# curl "http://localhost:5001/api/profile/search?q=layakishore"
+
+# # Delete profile
+# curl -X DELETE "http://localhost:5001/api/profile/layakishorereddy@gmail.com"
+
+# # Get profile statistics
+# curl http://localhost:5001/api/profiles/stats
