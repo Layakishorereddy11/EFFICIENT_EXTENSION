@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', function() {
   setupNavigation();
   setupDynamicFields();
   setupSkillsManager();
+  setupCountryStateDropdown();
   loadProfile();
 });
 
@@ -36,6 +37,12 @@ function setupNavigation() {
       document.getElementById(targetId).scrollIntoView({behavior: 'smooth'});
     });
   });
+
+  // Add navigation item for Address
+  const addressNavItem = document.createElement('li');
+  addressNavItem.innerHTML = '<a href="#address">Address</a>';
+  // Insert it after Personal Info and before Education
+  document.querySelector('.sidebar nav ul li:first-child').after(addressNavItem);
 }
 
 // Setup dynamic fields (education and work experience)
@@ -264,6 +271,24 @@ function populateForm(profile) {
   document.getElementById('phone').value = profile.phone || '';
   document.getElementById('dob').value = profile.dob || '';
   
+  // Fill address fields
+  if (profile.address) {
+    document.getElementById('street').value = profile.address.street || '';
+    document.getElementById('city').value = profile.address.city || '';
+    document.getElementById('zipCode').value = profile.address.zipCode || '';
+    
+    if (profile.address.country) {
+      document.getElementById('country').value = profile.address.country;
+      // Trigger change event to load states
+      document.getElementById('country').dispatchEvent(new Event('change'));
+      
+      // Set state after states are loaded
+      setTimeout(() => {
+        document.getElementById('state').value = profile.address.state || '';
+      }, 100);
+    }
+  }
+  
   // More fields would be populated here...
 }
 
@@ -283,6 +308,15 @@ document.getElementById('profileForm').addEventListener('submit', async function
     dob: formData.get('dob'),
     phoneCountry: formData.get('phoneCountry'),
     location: formData.get('location'),
+    
+    // Add address
+    address: {
+      street: formData.get('street'),
+      city: formData.get('city'),
+      state: formData.get('state'),
+      zipCode: formData.get('zipCode'),
+      country: formData.get('country')
+    },
     
     // Education
     education: getEducationData(),
@@ -400,4 +434,54 @@ function showNotification(message, type) {
     notification.classList.add('fade-out');
     setTimeout(() => notification.remove(), 500);
   }, 3000);
+}
+
+// Setup country and state dropdowns
+function setupCountryStateDropdown() {
+  const countrySelect = document.getElementById('country');
+  const stateSelect = document.getElementById('state');
+  
+  const states = {
+    'United States': [
+      'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 
+      'Connecticut', 'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 
+      'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky', 'Louisiana', 
+      'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'Minnesota', 
+      'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada', 
+      'New Hampshire', 'New Jersey', 'New Mexico', 'New York', 
+      'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 
+      'Pennsylvania', 'Rhode Island', 'South Carolina', 'South Dakota', 
+      'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington', 
+      'West Virginia', 'Wisconsin', 'Wyoming'
+    ],
+    'Canada': [
+      'Alberta', 'British Columbia', 'Manitoba', 'New Brunswick', 
+      'Newfoundland and Labrador', 'Northwest Territories', 'Nova Scotia', 
+      'Nunavut', 'Ontario', 'Prince Edward Island', 'Quebec', 
+      'Saskatchewan', 'Yukon'
+    ],
+    // Add more countries as needed
+  };
+  
+  countrySelect.addEventListener('change', function() {
+    const country = this.value;
+    
+    // Clear existing options
+    while (stateSelect.options.length > 1) {
+      stateSelect.remove(1);
+    }
+    
+    // Update placeholder
+    stateSelect.options[0].text = country ? 'Select a state/province' : 'Please select a country';
+    
+    // Add states/provinces for selected country
+    if (states[country]) {
+      states[country].forEach(state => {
+        const option = document.createElement('option');
+        option.value = state;
+        option.textContent = state;
+        stateSelect.appendChild(option);
+      });
+    }
+  });
 }
