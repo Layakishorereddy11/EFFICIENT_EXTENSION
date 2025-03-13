@@ -528,13 +528,39 @@ def get_inverted_mapping():
         url = request.args.get('url')
         if not url:
             return jsonify({'error': 'URL parameter required'}), 400
-            
-        mapping = inverted_mappings_collection.find_one({'url': url}, {'_id': 0})
+        
+        # Decode URL to handle any URL-encoded characters
+        url_decoded = unquote(url)
+        print(f"Looking for inverted mapping for URL: {url_decoded}")
+        
+        # Check if inverted mapping exists
+        mapping = inverted_mappings_collection.find_one({'url': url_decoded}, {'_id': 0})
+        
         if mapping:
             return jsonify(mapping)
-        return jsonify({'error': 'Inverted mapping not found'}), 404
+        
+        # If not found, check with partial URL matching (domain only)
+        if '://' in url_decoded:
+            domain = url_decoded.split('://', 1)[1].split('/', 1)[0]
+            print(f"Trying partial match with domain: {domain}")
+            mappings = list(inverted_mappings_collection.find(
+                {'url': {'$regex': domain}},
+                {'_id': 0}
+            ).limit(1))
+            
+            if mappings:
+                print(f"Found mapping with domain match: {mappings[0]['url']}")
+                return jsonify(mappings[0])
+        
+        # No mapping found
+        return jsonify({
+            'url': url_decoded,
+            'inverted_mapping': {},
+            'status': 'not_found'
+        })
         
     except Exception as e:
+        print(f"Error in get_inverted_mapping: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/inverted-mappings/all', methods=['GET'])
@@ -614,6 +640,7 @@ if __name__ == '__main__':
 ##
 # Get inverted mapping
 # curl "http://localhost:5001/api/inverted-mapping?url=https://example.com"
+#curl "http://localhost:5001/api/inverted-mapping?url=https://fa-exhh-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2002/job/36710/apply/section/1"
 
 # # Create inverted mapping
 # curl -X POST http://localhost:5001/api/inverted-mapping \

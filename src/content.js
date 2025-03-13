@@ -167,7 +167,10 @@ function sendMappingToBackend() {
         if (!result.userEmail) {
             console.error('User not logged in');
             return;
+        }else{
+            console.log('User logged in:', result.userEmail);
         }
+
 
         const payload = {
             url: window.location.href,
@@ -196,7 +199,7 @@ function sendMappingToBackend() {
 }
 
 // Updated autoFillForm function
-async function autoFillForm() {
+window.autoFillForm = async function() {
     if (hasAutoFilled || isAutoFilling) return;
     
     try {
@@ -212,18 +215,31 @@ async function autoFillForm() {
         }
 
         isAutoFilling = true;
-        const url = `http://localhost:5001/api/mapping?url=${encodeURIComponent(window.location.href)}&user_email=${encodeURIComponent(userEmail)}`;
+        const url = `http://localhost:5001/api/inverted-mapping?url=${encodeURIComponent(window.location.href)}`;
         const response = await fetchWithRetry(url);
         const data = await response.json();
-        
-        if (data && data.mapping) {
-            const entries = Object.entries(data.mapping);
-            for (const [xpath, value] of entries) {
-                await new Promise(resolve => setTimeout(resolve, 100));
-                fillElement(xpath, value);
+
+        const url_profile = `http://localhost:5001/api/profile?email=${encodeURIComponent(userEmail)}`;
+        const response_profile = await fetchWithRetry(url_profile);
+        const data_profile = await response_profile.json();
+        if(data_profile){
+            
+            if (data && data.mapping) {
+                console.log('Auto-filling form inverted:', data.mapping);
+
+                const new_mapping = createInvertedMappingForAuto(data, data_profile);
+                console.log('Auto-filling form new generated:', new_mapping.mapping);
+                const entries = Object.entries(new_mapping.mapping);
+                for (const [xpath, value] of entries) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    fillElement(xpath, value);
+                }
+                hasAutoFilled = true;
             }
-            hasAutoFilled = true;
+
         }
+
+        
     } catch (error) {
         console.error('Error fetching mapping:', error);
     } finally {
@@ -231,7 +247,10 @@ async function autoFillForm() {
     }
 }
 
-// Fill element by XPath
+// Enhanced fillElement function to handle dropdowns and searchboxes
+window.fillElement = fillElement;
+window.createInvertedMappingForAuto = createInvertedMappingForAuto;
+
 function fillElement(xpath, value) {
     const element = document.evaluate(
         xpath,
@@ -254,18 +273,72 @@ function fillElement(xpath, value) {
                     case 'radio':
                         element.checked = value;
                         break;
+                    // Handle searchbox/autocomplete inputs
+                    case 'search':
+                        element.value = value;
+                        // Focus the element first
+                        element.focus();
+                        // Wait briefly before simulating typing
+                        setTimeout(() => {
+                            // Simulate typing by triggering input events
+                            element.value = value;
+                            element.dispatchEvent(new Event('input', { bubbles: true }));
+                            element.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+                            // After typing, trigger search/enter
+                            setTimeout(() => {
+                                element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+                            }, 300);
+                        }, 100);
+                        break;
                     default:
                         element.value = value;
                 }
                 break;
             case 'select':
+                // Handle standard select dropdowns
                 element.value = value;
+                
+                // If no option was selected (value not found), try matching by text
+                if (element.value !== value) {
+                    for (let i = 0; i < element.options.length; i++) {
+                        if (element.options[i].text.toLowerCase().includes(String(value).toLowerCase())) {
+                            element.selectedIndex = i;
+                            element.value = element.options[i].value;
+                            break;
+                        }
+                    }
+                }
+                break;
+            // Handle custom dropdown elements
+            case 'div':
+            case 'span':
+                if (element.getAttribute('role') === 'combobox' || 
+                    element.classList.contains('dropdown') || 
+                    element.classList.contains('select')) {
+                    // Click to open dropdown
+                    element.click();
+                    
+                    // Find dropdown options (common patterns)
+                    setTimeout(() => {
+                        // Look for dropdown items in common structures
+                        const options = document.querySelectorAll('.dropdown-item, .select-option, [role="option"]');
+                        for (const option of options) {
+                            if (option.textContent.toLowerCase().includes(String(value).toLowerCase())) {
+                                option.click();
+                                break;
+                            }
+                        }
+                    }, 300);
+                } else {
+                    // For other div/span elements, try setting innerText
+                    element.innerText = value;
+                }
                 break;
             default:
                 element.value = value;
         }
 
-        // Trigger events
+        // Trigger events for all elements
         element.dispatchEvent(new Event('input', { bubbles: true }));
         element.dispatchEvent(new Event('change', { bubbles: true }));
         element.dispatchEvent(new Event('blur', { bubbles: true }));
@@ -300,4 +373,39 @@ function checkUrlChange() {
 
 // Add URL change detection interval
 setInterval(checkUrlChange, 1000);
+
+// Helper function for string comparison (like Python's safe_string_compare)
+function safeStringCompare(value1, value2) {
+  // Convert values to strings and handle nulls
+  if (value1 == null || value2 == null) return false;
+  
+  // Convert to strings and lowercase for comparison
+  const str1 = String(value1).toLowerCase();
+  const str2 = String(value2).toLowerCase();
+  
+  // Check if either contains the other
+  return str1.includes(str2) || str2.includes(str1);
+}
+
+// JavaScript version of the Python function
+function createInvertedMappingForAuto(mappings, profiles) {
+  // Deep copy the mappings object
+  const invertedMapping = JSON.parse(JSON.stringify(mappings));
+  
+  // Iterate through each key-value pair in the mapping
+  for (const [key, value] of Object.entries(mappings.mapping || {})) {
+    console.log(`Key: ${key}, Value: ${value}`);
+    
+    // Check each key in the profile for matches
+    for (const [profileKey, profileValue] of Object.entries(profiles)) {
+      if (safeStringCompare(profileKey, value)) {
+        console.log(`Profile Key: ${profileKey}, Profile Value: ${profileValue}`);
+        invertedMapping.mapping[key] = profileValue;
+        break;
+      }
+    }
+  }
+  
+  return invertedMapping;
+}
 
